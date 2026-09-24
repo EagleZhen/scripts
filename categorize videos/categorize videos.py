@@ -69,20 +69,32 @@ for source,dest,old_file,new_file in change_list:
 		print(f"=====================================\n{location_dict[current_prefix]}\n")
 	print(f"\"{source}\" \n\tnew location: {join(dest, new_file)}")
 
+skipped_count = len(file_list) - len(change_list)
+moved_count = 0
+failed_count = 0
+
 if (len(change_list)==0):
-	pause("No files to be moved.")
+	pause(f"No files to be moved. Moved: 0; skipped: {skipped_count}; failed: 0.")
 	stop()
 
-choice = input("=====================================\nCorrect? (yes/no): ")
+choice = input("=====================================\nCorrect? (yes/no): ").strip().lower()
 if (choice == "yes"):
 	for source,dest,old_file,new_file in change_list:
 		target = join(dest, new_file)
 		# Recheck in case the destination appeared while awaiting confirmation.
 		if os.path.lexists(target):
 			print(f'[!] Skipped "{old_file}": destination already exists: "{target}".')
+			skipped_count += 1
 			continue
-		os.makedirs(dest, exist_ok=True)
-		shutil.move(source, target)
+		try:
+			os.makedirs(dest, exist_ok=True)
+			shutil.move(source, target)
+		except (OSError, shutil.Error) as error:
+			failed_count += 1
+			print(f'[!] Failed to move "{source}" to "{target}": {error}')
+			continue
+		moved_count += 1
 		print(f'Moved "{source}" to "{target}".')
-
-pause("====================Done!====================\a")
+	pause(f"Finished. Moved: {moved_count}; skipped: {skipped_count}; failed: {failed_count}.\a")
+else:
+	pause(f"Cancelled. Moved: 0; skipped: {skipped_count}; failed: 0; cancelled: {len(change_list)}.")
