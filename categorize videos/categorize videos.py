@@ -19,6 +19,10 @@ location_dict=data["aliases"]
 change_list = [] # list of files to be moved and their corresponding destination path
 planned_destinations = set()
 for file in file_list:
+	source = join(source_path, file)
+	if os.path.isdir(source):
+		print(f'[!] Skipped "{file}": entry is a directory.')
+		continue
 	# assume the file name format is "<prefix> <friend> <original file name>"
 	parts = file.split(maxsplit=2)
 	if (len(parts)<3):
@@ -42,7 +46,6 @@ for file in file_list:
 			print (f"[!] \"{file}\" is not yet labelled.")
 			continue
 		
-		source = join(source_path,file)
 		dest = final_destination_path
 		target = join(dest, new_file)
 		target_key = os.path.normcase(os.path.abspath(target))
