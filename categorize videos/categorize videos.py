@@ -44,6 +44,8 @@ for file in file_list:
 		source = join(source_path,file)
 		dest = final_destination_path
 		change_list.append((source,dest,file,new_file))
+	else:
+		print(f'[!] Skipped "{file}": unknown game tag "{prefix}". Add it to aliases in List.json.')
 
 current_prefix = ""
 for source,dest,old_file,new_file in change_list:
