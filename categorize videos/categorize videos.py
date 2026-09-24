@@ -1,5 +1,5 @@
-import ez,os,json
-from ez import pause,stop,move_file,rename_file
+import ez,os,json,shutil
+from ez import pause,stop
 from os.path import join
 
 # stop(ez.get_info_path())
@@ -17,6 +17,7 @@ location_dict=data["aliases"]
 # stop(location_dict)
 
 change_list = [] # list of files to be moved and their corresponding destination path
+planned_destinations = set()
 for file in file_list:
 	# assume the file name format is "<prefix> <friend> <original file name>"
 	parts = file.split(maxsplit=2)
@@ -43,6 +44,15 @@ for file in file_list:
 		
 		source = join(source_path,file)
 		dest = final_destination_path
+		target = join(dest, new_file)
+		target_key = os.path.normcase(os.path.abspath(target))
+		if os.path.lexists(target):
+			print(f'[!] Skipped "{file}": destination already exists: "{target}".')
+			continue
+		if target_key in planned_destinations:
+			print(f'[!] Skipped "{file}": another file is already planned for "{target}".')
+			continue
+		planned_destinations.add(target_key)
 		change_list.append((source,dest,file,new_file))
 	else:
 		print(f'[!] Skipped "{file}": unknown game tag "{prefix}". Add it to aliases in List.json.')
@@ -54,7 +64,7 @@ for source,dest,old_file,new_file in change_list:
 	if (prefix != current_prefix):
 		current_prefix = prefix
 		print(f"=====================================\n{location_dict[current_prefix]}\n")
-	print(f"\"{source}\" \n\tnew location: {dest}")
+	print(f"\"{source}\" \n\tnew location: {join(dest, new_file)}")
 
 if (len(change_list)==0):
 	pause("No files to be moved.")
@@ -62,10 +72,14 @@ if (len(change_list)==0):
 
 choice = input("=====================================\nCorrect? (yes/no): ")
 if (choice == "yes"):
-	# update the progress bar whenever a file is moved
 	for source,dest,old_file,new_file in change_list:
-		# print(join(dest,old_file), join(dest, new_file))
-		move_file(source, dest)
-		rename_file(join(dest,old_file), join(dest, new_file))
+		target = join(dest, new_file)
+		# Recheck in case the destination appeared while awaiting confirmation.
+		if os.path.lexists(target):
+			print(f'[!] Skipped "{old_file}": destination already exists: "{target}".')
+			continue
+		os.makedirs(dest, exist_ok=True)
+		shutil.move(source, target)
+		print(f'Moved "{source}" to "{target}".')
 
 pause("====================Done!====================\a")
