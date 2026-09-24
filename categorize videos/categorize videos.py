@@ -19,23 +19,23 @@ location_dict=data["aliases"]
 change_list = [] # list of files to be moved and their corresponding destination path
 for file in file_list:
 	# assume the file name format is "<prefix> <friend> <original file name>"
-	if (len(file.split(' '))<3):
+	parts = file.split(maxsplit=2)
+	if (len(parts)<3):
 		print (f"Skipped \"{file}\" because it does not follow the naming convention.")
 		continue
-	prefix = file.split(' ')[0] # the game alias
-	friend = file.split(' ')[1] # whether play with friends or single player
+	prefix, friend, original_name = parts
 
 	if (prefix in location_dict):
 		final_destination_path = join(destination_path, location_dict[prefix])
 
-		# single player
+		# play with friends
 		if (friend=="F"):
-			new_file = file.replace("F ","")
+			new_file = f"{prefix} {original_name}"
 			final_destination_path = join(final_destination_path, "with friends")
 		
-		# play with friends
+		# single player
 		elif (friend=="S"):
-			new_file = file.replace("S ","")
+			new_file = f"{prefix} {original_name}"
 		
 		else:
 			print (f"[!] \"{file}\" is not yet labelled.")
@@ -50,7 +50,7 @@ for file in file_list:
 current_prefix = ""
 for source,dest,old_file,new_file in change_list:
 	# stop(source,dest)
-	prefix = os.path.basename(source).split(' ')[0]
+	prefix = os.path.basename(source).split(maxsplit=2)[0]
 	if (prefix != current_prefix):
 		current_prefix = prefix
 		print(f"=====================================\n{location_dict[current_prefix]}\n")
