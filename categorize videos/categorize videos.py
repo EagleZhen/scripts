@@ -2,6 +2,25 @@ import ez,os,json,shutil
 from ez import pause,stop
 from os.path import join
 
+def section(title):
+	print(f"\n--- {title} ---")
+
+def show_groups(title, groups):
+	if not groups:
+		return
+	section(title)
+	for reason, entries in groups.items():
+		print(f"  {'-' * 68}")
+		print(f"  {reason} ({len(entries)}):")
+		for filename, detail in entries:
+			print(f"    {filename}\n      {detail}")
+
+def show_summary(status, moved, skipped, failed, cancelled=0):
+	counts = f"Moved: {moved}   Skipped: {skipped}   Failed: {failed}"
+	if cancelled:
+		counts += f"   Cancelled: {cancelled}"
+	print(f"\n{status}. {counts}")
+
 # stop(ez.get_info_path())
 info_file_path = join(ez.get_info_path(),"List.json")
 # stop(info_file_path)
@@ -18,15 +37,20 @@ location_dict=data["aliases"]
 
 change_list = [] # list of files to be moved and their corresponding destination path
 planned_destinations = set()
+skipped_groups = {}
+
+def record_skip(reason, filename, detail):
+	skipped_groups.setdefault(reason, []).append((filename, detail))
+
 for file in file_list:
 	source = join(source_path, file)
 	if os.path.isdir(source):
-		print(f'[!] Skipped "{file}": entry is a directory.')
+		record_skip("Directories", file, "Entry is a directory.")
 		continue
 	# assume the file name format is "<prefix> <friend> <original file name>"
 	parts = file.split(maxsplit=2)
 	if (len(parts)<3):
-		print (f"Skipped \"{file}\" because it does not follow the naming convention.")
+		record_skip("Invalid filenames", file, 'Expected "<game tag> <F/S> <original filename>".')
 		continue
 	prefix, friend, original_name = parts
 
@@ -43,47 +67,57 @@ for file in file_list:
 			new_file = f"{prefix} {original_name}"
 		
 		else:
-			print (f"[!] \"{file}\" is not yet labelled.")
+			record_skip("Invalid play modes", file, f'Found "{friend}"; expected F (with friends) or S (single player).')
 			continue
 		
 		dest = final_destination_path
 		target = join(dest, new_file)
 		target_key = os.path.normcase(os.path.abspath(target))
 		if os.path.lexists(target):
-			print(f'[!] Skipped "{file}": destination already exists: "{target}".')
+			record_skip("Existing destinations", file, f'Destination already exists: {target}')
 			continue
 		if target_key in planned_destinations:
-			print(f'[!] Skipped "{file}": another file is already planned for "{target}".')
+			record_skip("Duplicate destinations in this batch", file, f'Another file is already planned for: {target}')
 			continue
 		planned_destinations.add(target_key)
 		change_list.append((source,dest,file,new_file))
 	else:
-		print(f'[!] Skipped "{file}": unknown game tag "{prefix}". Add it to aliases in List.json.')
+		record_skip("Unknown game tags", file, f'Add "{prefix}" to aliases in List.json.')
 
-current_prefix = ""
+show_groups("SKIPPED ENTRIES - BY REASON", skipped_groups)
+
+section("MOVE PREVIEW")
+print(f"  Source : {source_path}\n  Root   : {destination_path}")
+preview_groups = {}
 for source,dest,old_file,new_file in change_list:
-	# stop(source,dest)
-	prefix = os.path.basename(source).split(maxsplit=2)[0]
-	if (prefix != current_prefix):
-		current_prefix = prefix
-		print(f"=====================================\n{location_dict[current_prefix]}\n")
-	print(f"\"{source}\" \n\tnew location: {join(dest, new_file)}")
+	preview_groups.setdefault(dest, []).append((old_file, new_file))
+if not preview_groups:
+	print("  No files ready to move.")
+for dest, entries in preview_groups.items():
+	print(f"  Destination: {dest} ({len(entries)} files)")
+	for old_file, new_file in entries:
+		print(f"    {old_file} -> {new_file}")
 
 skipped_count = len(file_list) - len(change_list)
 moved_count = 0
 failed_count = 0
 
 if (len(change_list)==0):
-	pause(f"No files to be moved. Moved: 0; skipped: {skipped_count}; failed: 0.")
+	show_summary("Nothing to move", 0, skipped_count, 0)
+	pause()
 	stop()
 
-choice = input("=====================================\nCorrect? (yes/no): ").strip().lower()
+print(f"\nReady: {len(change_list)}   Skipped: {skipped_count}")
+choice = input('Move these files? Type "yes" to proceed, or press Enter to cancel: ').strip().lower()
 if (choice == "yes"):
-	for source,dest,old_file,new_file in change_list:
+	section("MOVING FILES")
+	move_issues = {}
+	for index, (source,dest,old_file,new_file) in enumerate(change_list, start=1):
 		target = join(dest, new_file)
 		# Recheck in case the destination appeared while awaiting confirmation.
 		if os.path.lexists(target):
-			print(f'[!] Skipped "{old_file}": destination already exists: "{target}".')
+			print(f"  [{index}/{len(change_list)}] SKIPPED  {old_file}")
+			move_issues.setdefault("Destinations that appeared after preview", []).append((old_file, f'Destination already exists: {target}'))
 			skipped_count += 1
 			continue
 		try:
@@ -91,10 +125,15 @@ if (choice == "yes"):
 			shutil.move(source, target)
 		except (OSError, shutil.Error) as error:
 			failed_count += 1
-			print(f'[!] Failed to move "{source}" to "{target}": {error}')
+			print(f"  [{index}/{len(change_list)}] FAILED   {old_file}")
+			move_issues.setdefault("Move failures", []).append((source, f'Target: {target}; error: {error}'))
 			continue
 		moved_count += 1
-		print(f'Moved "{source}" to "{target}".')
-	pause(f"Finished. Moved: {moved_count}; skipped: {skipped_count}; failed: {failed_count}.\a")
+		print(f"  [{index}/{len(change_list)}] MOVED    {old_file}")
+	if move_issues:
+		show_groups("MOVE ISSUES - BY REASON", move_issues)
+	show_summary("Finished with failures" if failed_count else "Finished", moved_count, skipped_count, failed_count)
+	pause("\a")
 else:
-	pause(f"Cancelled. Moved: 0; skipped: {skipped_count}; failed: 0; cancelled: {len(change_list)}.")
+	show_summary("Cancelled", 0, skipped_count, 0, len(change_list))
+	pause()
