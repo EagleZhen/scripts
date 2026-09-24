@@ -1,6 +1,35 @@
-import ez,os,json,shutil
+import ez,os,json,shutil,errno,tempfile
 from ez import pause,stop
 from os.path import join
+
+def move_safely(source, target):
+	"""Move on Windows without overwriting; return a warning if source deletion fails."""
+	# On Windows, rename refuses existing targets and moves within a filesystem without copying.
+	try:
+		os.rename(source, target)
+		return None
+	except OSError as error:
+		if error.errno != errno.EXDEV and getattr(error, "winerror", None) != 17:
+			raise
+
+	# Cross-filesystem move: only publish the final name after the copy completes.
+	with tempfile.NamedTemporaryFile(prefix=".categorize-", suffix=".partial", dir=os.path.dirname(target), delete=False) as temporary:
+		temporary_path = temporary.name
+	try:
+		shutil.copy2(source, temporary_path)
+		os.rename(temporary_path, target)
+	except (OSError, shutil.Error) as error:
+		try:
+			os.unlink(temporary_path)
+		except OSError as cleanup_error:
+			raise OSError(f'{error}; could not clean up temporary file "{temporary_path}": {cleanup_error}') from error
+		raise
+
+	try:
+		os.unlink(source)
+	except OSError as error:
+		return f'Copy completed at "{target}", but could not remove source "{source}": {error}'
+	return None
 
 def section(title):
 	print(f"\n--- {title} ---")
@@ -15,8 +44,10 @@ def show_groups(title, groups):
 		for filename, detail in entries:
 			print(f"    {filename}\n      {detail}")
 
-def show_summary(status, moved, skipped, failed, cancelled=0):
+def show_summary(status, moved, skipped, failed, cancelled=0, copied=0):
 	counts = f"Moved: {moved}   Skipped: {skipped}   Failed: {failed}"
+	if copied:
+		counts += f"   Copied (source retained): {copied}"
 	if cancelled:
 		counts += f"   Cancelled: {cancelled}"
 	print(f"\n{status}. {counts}")
@@ -101,6 +132,7 @@ for dest, entries in preview_groups.items():
 skipped_count = len(file_list) - len(change_list)
 moved_count = 0
 failed_count = 0
+copied_count = 0
 
 if (len(change_list)==0):
 	show_summary("Nothing to move", 0, skipped_count, 0)
@@ -122,17 +154,22 @@ if (choice == "yes"):
 			continue
 		try:
 			os.makedirs(dest, exist_ok=True)
-			shutil.move(source, target)
+			warning = move_safely(source, target)
 		except (OSError, shutil.Error) as error:
 			failed_count += 1
 			print(f"  [{index}/{len(change_list)}] FAILED   {old_file}")
 			move_issues.setdefault("Move failures", []).append((source, f'Target: {target}; error: {error}'))
 			continue
+		if warning:
+			copied_count += 1
+			print(f"  [{index}/{len(change_list)}] COPIED   {old_file} (source retained)")
+			move_issues.setdefault("Copied successfully; source cleanup needed", []).append((source, warning))
+			continue
 		moved_count += 1
 		print(f"  [{index}/{len(change_list)}] MOVED    {old_file}")
 	if move_issues:
 		show_groups("MOVE ISSUES - BY REASON", move_issues)
-	show_summary("Finished with failures" if failed_count else "Finished", moved_count, skipped_count, failed_count)
+	show_summary("Finished with issues" if failed_count or copied_count else "Finished", moved_count, skipped_count, failed_count, copied=copied_count)
 	pause("\a")
 else:
 	show_summary("Cancelled", 0, skipped_count, 0, len(change_list))
