@@ -8,3 +8,5 @@ auto connect cuhk wired network/credentials.json
 info for program/
 __pycache__
 rest reminder/log.txt
+.venv/
+/docs/superpowers/

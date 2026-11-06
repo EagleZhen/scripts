@@ -1,0 +1,2 @@
+# macOS uses built-in AppleScript and needs no third-party Python packages.
+win11toast==0.36.3; sys_platform == "win32"
