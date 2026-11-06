@@ -1,2 +1,4 @@
-# Auto detect text files and perform LF normalization
-* text=false
+# Normalize detected text to LF; Windows command launchers check out as CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
