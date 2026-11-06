@@ -5,6 +5,7 @@ $$
 $$
 
 ##### Setup
+- The cross-platform [rest reminder](<rest reminder/README.md>) has its own double-click launchers and isolated Python environment. Use its setup instructions instead of the legacy setup below.
 - add the directory of `\libraries` to PYTHONPATH to use some utility functions in `ez.py`
 - install `git` as `ez.py` uses `git` to get the name of the repository
 
